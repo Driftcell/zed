@@ -1065,28 +1065,32 @@ impl WindowsWindowInner {
         // For non-client double-clicks, check if this is over a control or blank area
         let hit_test_result = self.handle_hit_test_msg(handle, WM_NCHITTEST, wparam, lparam);
         
-        if let Some(hit_result) = hit_test_result {
-            let hit_area = hit_result as u32;
-            
-            // Only allow double-clicks on blank draggable areas (HTCAPTION) to maximize/restore
-            // Consume double-clicks on controls (buttons, etc.) to prevent unwanted maximize/restore
-            match hit_area {
-                HTCAPTION => {
-                    // This is a blank draggable area - allow default behavior (maximize/restore)
-                    None
-                }
-                HTCLOSE | HTMAXBUTTON | HTMINBUTTON => {
-                    // This is a control button - consume the double-click
-                    Some(0)
-                }
-                _ => {
-                    // For other hit test results, consume the double-click to be safe
-                    Some(0)
+        match hit_test_result {
+            Some(hit_result) => {
+                let hit_area = hit_result as u32;
+                
+                // Only allow double-clicks on blank draggable areas (HTCAPTION) to maximize/restore
+                // Consume double-clicks on controls (buttons, etc.) to prevent unwanted maximize/restore
+                match hit_area {
+                    HTCAPTION => {
+                        // This is a blank draggable area - allow default behavior (maximize/restore)
+                        None
+                    }
+                    HTCLOSE | HTMAXBUTTON | HTMINBUTTON => {
+                        // This is a control button - consume the double-click
+                        Some(0)
+                    }
+                    _ => {
+                        // For other hit test results, consume the double-click to be safe
+                        Some(0)
+                    }
                 }
             }
-        } else {
-            // If we can't determine the hit test, consume the double-click
-            Some(0)
+            None => {
+                // If hit test returns None, it means we should delegate to system default.
+                // In this case, also delegate double-click handling to system default.
+                None
+            }
         }
     }
 
@@ -1101,30 +1105,35 @@ impl WindowsWindowInner {
         // Convert to screen coordinates for hit testing
         unsafe { ClientToScreen(handle, &mut cursor_point).ok().log_err() };
         
+        // Pack screen coordinates back into lparam format for hit testing
         let screen_lparam = LPARAM(
-            ((cursor_point.x as u16) as usize) | (((cursor_point.y as u16) as usize) << 16)
+            ((cursor_point.x as i16) as u16 as usize) | 
+            (((cursor_point.y as i16) as u16 as usize) << 16)
         );
         
         // Perform hit test as if this were a non-client message
         let hit_test_result = self.handle_hit_test_msg(handle, WM_NCHITTEST, WPARAM(0), screen_lparam);
         
-        if let Some(hit_result) = hit_test_result {
-            let hit_area = hit_result as u32;
-            
-            // Only allow double-clicks that would result in HTCAPTION (blank draggable areas)
-            match hit_area {
-                HTCAPTION => {
-                    // This would be a blank draggable area - allow default behavior
-                    None
-                }
-                _ => {
-                    // This would be over a control or non-draggable area - consume the double-click
-                    Some(0)
+        match hit_test_result {
+            Some(hit_result) => {
+                let hit_area = hit_result as u32;
+                
+                // Only allow double-clicks that would result in HTCAPTION (blank draggable areas)
+                match hit_area {
+                    HTCAPTION => {
+                        // This would be a blank draggable area - allow default behavior
+                        None
+                    }
+                    _ => {
+                        // This would be over a control or non-draggable area - consume the double-click
+                        Some(0)
+                    }
                 }
             }
-        } else {
-            // If we can't determine the hit test, consume the double-click
-            Some(0)
+            None => {
+                // If hit test returns None, delegate to system default for double-click too
+                None
+            }
         }
     }
 
@@ -1728,15 +1737,16 @@ mod tests {
 
     // Mock function to test double-click behavior logic
     fn mock_double_click_should_be_consumed(hit_result: Option<isize>) -> bool {
-        if let Some(hit) = hit_result {
-            let hit_area = hit as u32;
-            match hit_area {
-                HTCAPTION => false, // Allow maximize/restore for blank areas
-                HTCLOSE | HTMAXBUTTON | HTMINBUTTON => true, // Consume for controls
-                _ => true, // Consume for other areas
+        match hit_result {
+            Some(hit) => {
+                let hit_area = hit as u32;
+                match hit_area {
+                    HTCAPTION => false, // Allow maximize/restore for blank areas
+                    HTCLOSE | HTMAXBUTTON | HTMINBUTTON => true, // Consume for controls
+                    _ => true, // Consume for other areas
+                }
             }
-        } else {
-            true // Consume if we can't determine hit test
+            None => false, // When hit test returns None, delegate to system (don't consume)
         }
     }
 
@@ -1762,9 +1772,9 @@ mod tests {
         let should_consume = mock_double_click_should_be_consumed(Some(HTCLIENT as isize));
         assert!(should_consume, "Double-click on client area should be consumed");
 
-        // Double-click with unknown hit test should be consumed
+        // Double-click with unknown hit test should delegate to system (not consume)
         let should_consume = mock_double_click_should_be_consumed(None);
-        assert!(should_consume, "Double-click with unknown hit test should be consumed");
+        assert!(!should_consume, "Double-click with None hit test should delegate to system");
     }
 
     #[test]
