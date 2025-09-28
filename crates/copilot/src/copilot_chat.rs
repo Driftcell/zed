@@ -109,6 +109,7 @@ pub struct Model {
     // reached. Zed does not currently implement this behaviour
     is_chat_fallback: bool,
     model_picker_enabled: bool,
+    supported_endpoints: Option<Vec<String>>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -898,6 +899,64 @@ mod tests {
                   "preview": false,
                   "vendor": "Anthropic",
                   "version": "claude-3.7-sonnet"
+                },
+                {
+                "billing": {
+                    "is_premium": true,
+                    "multiplier": 1,
+                    "restricted_to": [
+                    "pro",
+                    "pro_plus",
+                    "max",
+                    "business",
+                    "enterprise"
+                    ]
+                },
+                "capabilities": {
+                    "family": "gpt-5-codex",
+                    "limits": {
+                    "max_context_window_tokens": 200000,
+                    "max_output_tokens": 64000,
+                    "max_prompt_tokens": 128000,
+                    "vision": {
+                        "max_prompt_image_size": 3145728,
+                        "max_prompt_images": 1,
+                        "supported_media_types": [
+                        "image/jpeg",
+                        "image/png",
+                        "image/webp",
+                        "image/gif"
+                        ]
+                    }
+                    },
+                    "object": "model_capabilities",
+                    "supports": {
+                    "parallel_tool_calls": true,
+                    "streaming": true,
+                    "structured_outputs": true,
+                    "tool_calls": true,
+                    "vision": true
+                    },
+                    "tokenizer": "o200k_base",
+                    "type": "chat"
+                },
+                "id": "gpt-5-codex",
+                "is_chat_default": false,
+                "is_chat_fallback": false,
+                "model_picker_category": "powerful",
+                "model_picker_enabled": true,
+                "name": "GPT-5-Codex (Preview)",
+                "object": "model",
+                "policy": {
+                    "state": "enabled",
+                    "terms": "Enable access to the latest GPT-5-Codex model from OpenAI. [Learn more about how GitHub Copilot serves GPT-5-Codex](https://gh.io/copilot-openai)."
+                },
+                "preview": true,
+                "supported_endpoints": [
+                    "/responses"
+                ],
+                "vendor": "OpenAI",
+                "version": "gpt-5-codex"
                 }
               ],
               "object": "list"
@@ -905,9 +964,13 @@ mod tests {
 
         let schema: ModelSchema = serde_json::from_str(json).unwrap();
 
-        assert_eq!(schema.data.len(), 2);
+        assert_eq!(schema.data.len(), 3);
         assert_eq!(schema.data[0].id, "gpt-4");
         assert_eq!(schema.data[1].id, "claude-3.7-sonnet");
+        assert_eq!(
+            schema.data[2].supported_endpoints.clone().unwrap()[0],
+            "/responses"
+        );
     }
 
     #[test]
