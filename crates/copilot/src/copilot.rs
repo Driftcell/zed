@@ -1,6 +1,7 @@
 pub mod copilot_chat;
 mod copilot_completion_provider;
 pub mod request;
+pub mod responses;
 mod sign_in;
 
 use crate::sign_in::initiate_sign_in_within_workspace;

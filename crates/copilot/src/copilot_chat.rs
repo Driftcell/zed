@@ -245,6 +245,10 @@ pub struct Request {
     pub tool_choice: Option<ToolChoice>,
 }
 
+pub struct ResponsesApiRequest {
+    // todo!
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Function {
     pub name: String,
