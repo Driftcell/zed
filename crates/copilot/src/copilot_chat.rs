@@ -46,6 +46,10 @@ impl CopilotChatConfiguration {
         format!("{}/chat/completions", endpoint)
     }
 
+    pub fn responses_api_url_from_endpoint(&self, endpoint: &str) -> String {
+        format!("{}/responses", endpoint)
+    }
+
     pub fn models_url_from_endpoint(&self, endpoint: &str) -> String {
         format!("{}/models", endpoint)
     }
@@ -561,14 +565,16 @@ impl CopilotChat {
             .flatten()
             .context("Copilot chat is not enabled")?;
 
-        let (oauth_token, api_token, client, configuration) = this.read_with(&cx, |this, _| {
-            (
-                this.oauth_token.clone(),
-                this.api_token.clone(),
-                this.client.clone(),
-                this.configuration.clone(),
-            )
-        })?;
+        let (oauth_token, api_token, client, configuration, models) =
+            this.read_with(&cx, |this, _| {
+                (
+                    this.oauth_token.clone(),
+                    this.api_token.clone(),
+                    this.client.clone(),
+                    this.configuration.clone(),
+                    this.models.clone(),
+                )
+            })?;
 
         let oauth_token = oauth_token.context("No OAuth token available")?;
 
@@ -586,13 +592,32 @@ impl CopilotChat {
             }
         };
 
-        let api_url = configuration.api_url_from_endpoint(&token.api_endpoint);
+        let use_responses_api = models
+            .as_ref()
+            .context("Models not loaded")?
+            .iter()
+            .find(|model| model.name == request.model)
+            .context("Missing model")?
+            .supported_endpoints
+            .as_ref()
+            .map_or(false, |endpoints| {
+                endpoints
+                    .iter()
+                    .any(|endpoint| endpoint.contains("responses"))
+            });
+
+        let api_url = if use_responses_api {
+            configuration.api_url_from_endpoint(&token.api_endpoint)
+        } else {
+            configuration.responses_api_url_from_endpoint(&token.api_endpoint)
+        };
         stream_completion(
             client.clone(),
             token.api_key,
             api_url.into(),
             request,
             is_user_initiated,
+            use_responses_api,
         )
         .await
     }
@@ -731,6 +756,7 @@ async fn stream_completion(
     completion_url: Arc<str>,
     request: Request,
     is_user_initiated: bool,
+    use_responses_api: bool,
 ) -> Result<BoxStream<'static, Result<ResponseEvent>>> {
     let is_vision_request = request.messages.iter().any(|message| match message {
       ChatMessage::User { content }
